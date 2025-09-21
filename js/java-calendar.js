@@ -2,48 +2,81 @@ function jCalendar(div, config = {}) {
 	document.getElementById(div).innerHTML = `
 		<div class="wrap">
 
-    <!-- HEADER: kiri = tanggal, kanan = tombol prev/next hari -->
-    <div class="calendar-header" role="banner">
-      <div class="header-left">
-        <p class="header-sub">Kamis Pon, 18 September 2025</p>
-        <h2 class="header-main">25 Rabiul Awal 1447</h2>
+        <!-- HEADER: kiri = tanggal, kanan = tombol prev/next hari -->
+        <div class="calendar-header" role="banner">
+          <div class="header-left">
+            <p class="header-sub">Kamis Pon, 18 September 2025</p>
+            <h2 class="header-main">25 Rabiul Awal 1447</h2>
+          </div>
+
+          <div class="header-right" role="navigation" aria-label="Navigasi hari">
+            <button class="nav-btn prev-day" title="Hari sebelumnya">&lt;</button>
+            <button class="nav-btn next-day" title="Hari berikutnya">&gt;</button>        
+          </div>
+        </div>
+
+        <!-- BULAN: tombol kiri-kanan dan judul di tengah -->
+        <div class="calendar-month">
+          <button class="month-nav prev-month" aria-label="Bulan sebelumnya" id="prevBtn">&lt;</button>
+          <div class="month-center">
+            <h3 id="monthTitle">September 2025</h3>
+            <div id="hijriDate"><p>Rabiul Awal - Rabiul Akhir 1447</p></div>
+            <div class="loading" id="loadingIndicator" style="display: none;font-size: 11px;">Memuat data...</div>
+          </div>
+          <button class="month-nav next-month" aria-label="Bulan berikutnya" id="nextBtn">&gt;</button>
+        </div>
+
+        <!-- GRID KALENDER (contoh statis) -->
+    	<div id="errorContainer"></div>
+        <div class="calendar-grid" aria-hidden="false" id="calendarGrid">
+
+        </div>
+
+        <!-- LIST HARI BESAR -->
+        <div class="events" aria-live="polite" id="eventsList">
+        </div>
       </div>
-
-      <div class="header-right" role="navigation" aria-label="Navigasi hari">
-        <button class="nav-btn prev-day" title="Hari sebelumnya">&lt;</button>
-        <button class="nav-btn next-day" title="Hari berikutnya">&gt;</button>        
-      </div>
-    </div>
-
-    <!-- BULAN: tombol kiri-kanan dan judul di tengah -->
-    <div class="calendar-month">
-      <button class="month-nav prev-month" aria-label="Bulan sebelumnya" id="prevBtn">&lt;</button>
-      <div class="month-center">
-        <h3 id="monthTitle">September 2025</h3>
-        <div id="hijriDate"><p>Rabiul Awal - Rabiul Akhir 1447</p></div>
-        <div class="loading" id="loadingIndicator" style="display: none;font-size: 11px;">Memuat data...</div>
-      </div>
-      <button class="month-nav next-month" aria-label="Bulan berikutnya" id="nextBtn">&gt;</button>
-    </div>
-
-    <!-- GRID KALENDER (contoh statis) -->
-	<div id="errorContainer"></div>
-    <div class="calendar-grid" aria-hidden="false" id="calendarGrid">
-
-    </div>
-
-    <!-- LIST HARI BESAR -->
-    <div class="events" aria-live="polite" id="eventsList">
-    </div>
-  </div>
 	`;
 
-	new JavaneseCalendar();
+    getHolidays().then(holidays => {
+	   new JavaneseCalendar({holidays: holidays});
+    });
+
 }
 
+async function getHolidays() {
+    try {
+        const response = await fetch('https://grei.pythonanywhere.com/api/id_holiday/2025-01-01/2025-12-31');
+        const data = await response.json();
+
+        // data berbentuk object { "YYYY-MM-DD": "Nama Libur", ... }
+        if (data && typeof data === 'object') {
+            const holidays = {};
+
+            Object.entries(data).forEach(([dateStr, title]) => {
+                // ubah format tanggal ke "YYYY-M-D" agar sesuai dengan class JavaneseCalendar
+                const [year, month, day] = dateStr.split('-').map(Number);
+                const key = `${year}-${month}-${day}`;
+
+                holidays[key] = {
+                    title: title,
+                    type: 'red'  // default merah, bisa diatur logika lain
+                };
+            });
+
+            return holidays;
+        } else {
+            console.warn('Struktur data tidak sesuai:', data);
+            return {};
+        }
+    } catch (error) {
+        console.error('Error fetching holiday:', error);
+        return {};
+    }
+}
 
 class JavaneseCalendar {
-    constructor() {
+    constructor(config = {}) {
         this.currentDate = new Date();
         this.currentMonth = this.currentDate.getMonth();
         this.currentYear = this.currentDate.getFullYear();
@@ -71,23 +104,8 @@ class JavaneseCalendar {
         ];
         
         // Hari libur nasional 2025
-        this.holidays = {
+        this.holidays = config.holidays || {
             '2025-1-1': { title: 'Tahun Baru Masehi', type: 'red' },
-            '2025-1-29': { title: 'Tahun Baru Imlek', type: 'red' },
-            '2025-3-14': { title: 'Hari Suci Nyepi', type: 'red' },
-            '2025-3-29': { title: 'Wafat Isa Al Masih', type: 'red' },
-            '2025-3-31': { title: 'Isra Mi\'raj', type: 'yellow' },
-            '2025-4-9': { title: 'Hari Raya Idul Fitri', type: 'red' },
-            '2025-4-10': { title: 'Hari Raya Idul Fitri', type: 'red' },
-            '2025-5-1': { title: 'Hari Buruh', type: 'red' },
-            '2025-5-12': { title: 'Hari Raya Waisak', type: 'red' },
-            '2025-5-29': { title: 'Kenaikan Isa Al Masih', type: 'red' },
-            '2025-6-1': { title: 'Hari Lahir Pancasila', type: 'red' },
-            '2025-6-15': { title: 'Idul Adha', type: 'red' },
-            '2025-7-5': { title: 'Tahun Baru Islam', type: 'yellow' },
-            '2025-8-17': { title: 'HUT RI ke-80', type: 'red' },
-            '2025-9-5': { title: 'Maulid Nabi Muhammad', type: 'yellow' },
-            '2025-12-25': { title: 'Hari Raya Natal', type: 'red' }
         };
         
         this.init();
@@ -115,6 +133,22 @@ class JavaneseCalendar {
                 this.currentYear++;
             }
             this.renderCalendar();
+        });
+
+        // navigasi hari di header
+        document.querySelector('.prev-day').addEventListener('click', () => {
+            this.currentDate.setDate(this.currentDate.getDate() - 1);
+            this.currentMonth = this.currentDate.getMonth();
+            this.currentYear = this.currentDate.getFullYear();
+            this.renderCalendar();
+            this.updateHeader(this.currentDate);
+        });
+        document.querySelector('.next-day').addEventListener('click', () => {
+            this.currentDate.setDate(this.currentDate.getDate() + 1);
+            this.currentMonth = this.currentDate.getMonth();
+            this.currentYear = this.currentDate.getFullYear();
+            this.renderCalendar();
+            this.updateHeader(this.currentDate);
         });
     }
     
@@ -301,7 +335,7 @@ class JavaneseCalendar {
                 const isSunday = date.getDay() === 0;
                 
                 let classes = '';
-                if (isToday) classes += ' today';
+                if (isToday) classes += ' today selected';
                 if (isSunday) classes += ' sunday';
                 
                 // Get Hijri data dari array yang sudah di-cache
@@ -327,17 +361,18 @@ class JavaneseCalendar {
         // Update events
         this.renderEvents();
         this.showLoading(false);
+        this.updateHeader(this.currentDate);
 
         document.querySelectorAll('.day-cell').forEach(cell => {
 		    cell.addEventListener('click', () => {
-		    // hapus selected dari semua cell
-		    document.querySelectorAll('.day-cell').forEach(c => c.classList.remove('selected'));
-		    // tambahkan ke cell yang diklik
-		    cell.classList.add('selected');
+    		    // hapus selected dari semua cell
+    		    document.querySelectorAll('.day-cell').forEach(c => c.classList.remove('selected'));
+    		    // tambahkan ke cell yang diklik
+    		    cell.classList.add('selected');
 
-		    // contoh: ambil nomor hari dan tampilkan di console
-		    const dayNum = cell.querySelector('.num')?.textContent;
-		    console.log("Tanggal dipilih:", dayNum);
+    		    const dayNum = parseInt(cell.querySelector('.num')?.textContent, 10);
+                this.currentDate = new Date(this.currentYear, this.currentMonth, dayNum);
+                this.updateHeader(this.currentDate);
 		    });
 		});
     }
@@ -419,7 +454,7 @@ class JavaneseCalendar {
         // Filter events for current month
         const currentMonthEvents = Object.entries(this.holidays)
             .filter(([dateStr, event]) => {
-                const [year, month, day] = dateStr.split('-').map(Number);
+                const [year, month] = dateStr.split('-').map(Number);
                 return year === this.currentYear && month === this.currentMonth + 1;
             })
             .sort(([a], [b]) => {
@@ -429,7 +464,12 @@ class JavaneseCalendar {
             });
         
         if (currentMonthEvents.length === 0) {
-            eventsList.innerHTML = '<div class="event-item"><div class="event-details"><div class="event-title">Tidak ada agenda bulan ini</div></div></div>';
+            eventsList.innerHTML = `
+                <div class="event-item">
+                    <div class="event-details">
+                        <div class="event-title">Tidak ada agenda bulan ini</div>
+                    </div>
+                </div>`;
             return;
         }
         
@@ -441,31 +481,75 @@ class JavaneseCalendar {
             const hijriData = this.getHijriForDate(year, month, day);
             const javaneseDay = this.getJavaneseDay(date);
             
-            const eventItem = document.createElement('div');
-            eventItem.className = 'event-item';
+            // Nama hari (Senin, Selasa, dst.)
+            const indoDay = date.toLocaleDateString('id-ID', { weekday: 'long' });
             
             let hijriText = '';
             if (hijriData) {
-                hijriText = `${hijriData.hijriDay} ${hijriData.hijriMonthName} ${hijriData.hijriYear} H`;
+                hijriText = `${hijriData.hijriDay} ${this.hijriMonths[hijriData.hijriMonth - 1]} ${hijriData.hijriYear} H`;
             } else {
                 hijriText = 'Data Hijriah tidak tersedia';
             }
             
+            const eventItem = document.createElement('div');
+            eventItem.className = 'event-item';
+            
             eventItem.innerHTML = `
                 <div class="event-item">
-			        <div class="event-date" aria-hidden="true">
-			          <div class="date-day">${day}</div>
-			          <div class="date-month">${this.monthNames[month - 1].slice(0, 3)}</div>
-			        </div>
-			        <div class="event-desc">
-			          <div class="event-title">${event.title}</div>
-			          <div class="event-sub">${javaneseDay}, ${day} ${this.monthNames[month - 1]} ${year} / ${hijriText}</div>
-			        </div>
-		      	</div>
+                    <div class="event-date ${event.type}" aria-hidden="true">
+                      <div class="date-day">${day}</div>
+                      <div class="date-month">${this.monthNames[month - 1].slice(0, 3)}</div>
+                    </div>
+                    <div class="event-desc">
+                      <div class="event-title">${event.title}</div>
+                      <div class="event-sub">${indoDay} ${javaneseDay}, ${day} ${this.monthNames[month - 1]} ${year} / ${hijriText}</div>
+                    </div>
+                </div>
             `;
             
             eventsList.appendChild(eventItem);
         });
+    }
+
+
+    updateHeader(date) {
+        const hijriData = this.getHijriForDate(date.getFullYear(), date.getMonth() + 1, date.getDate());
+
+        const javaDay = this.getJavaneseDay(date);
+        const indoDay = date.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        var tampilan = indoDay;
+
+        if (indoDay.indexOf('Minggu') !== -1) {
+            tampilan = indoDay.replace('Minggu', 'Ahad '+javaDay);
+        }
+        if (indoDay.indexOf('Senin') !== -1) {
+            tampilan = indoDay.replace('Senin', 'Senin '+javaDay);
+        }
+        if (indoDay.indexOf('Selasa') !== -1) {
+            tampilan = indoDay.replace('Selasa', 'Selasa '+javaDay);
+        }
+        if (indoDay.indexOf('Rabu') !== -1) {
+            tampilan = indoDay.replace('Rabu', 'Rabu '+javaDay);
+        }
+        if (indoDay.indexOf('Kamis') !== -1) {
+            tampilan = indoDay.replace('Kamis', 'Kamis '+javaDay);
+        }
+        if (indoDay.indexOf('Jumat') !== -1) {
+            tampilan = indoDay.replace('Jumat', 'Jumat '+javaDay);
+        }
+        if (indoDay.indexOf('Sabtu') !== -1) {
+            tampilan = indoDay.replace('Sabtu', 'Sabtu '+javaDay);
+        }
+
+        // document.querySelector('.header-sub').textContent = `${indoDay}, ${javaDay}`;
+        document.querySelector('.header-sub').textContent = tampilan;
+
+        if (hijriData) {
+            document.querySelector('.header-main').textContent =
+                `${hijriData.hijriDay} ${this.hijriMonths[hijriData.hijriMonth - 1]} ${hijriData.hijriYear} H`;
+        } else {
+            document.querySelector('.header-main').textContent = '-';
+        }
     }
 
 }
