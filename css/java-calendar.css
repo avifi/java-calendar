@@ -183,6 +183,8 @@
 .event-title{font-weight:600}
 .event-sub{font-size:13px;color:var(--sub);margin-top:6px}
 
+.box #java-calendar .wrap {padding: 0!important;}
+
 /* responsive: kecilkan padding/font */
 @media (max-width:520px){
   .wrap{padding:0 10px}
@@ -195,8 +197,20 @@
 
 @media (max-width:380px){
   .calendar-grid{grid-template-columns:repeat(7, 1fr)}
-  .event-item{padding:8px}
+  .event-item{padding:4px}
   .nav-btn{padding:6px 8px;font-size:14px}
+  .day-cell .num{font-size:12px}
+  .day-cell .hijri-number{font-size:8px}
+  .day-cell .javanese-day{font-size:8px}
+  .month-center h3{font-size:13px;}
+  .day-name{font-size: 10px;padding: 4px;}
+  .indicator{width: 4px;height: 4px;}
+  .event-date {min-width: 40px;padding: 3px;}
+  .event-title{font-size: 14px}
+  .event-sub{font-size: 11px}
+  #modalDate{font-size: 14px}
+  #modalDescription{font-size: 14px}
+  #hijriDate{font-size: 12px}
 }
 
 .sunday {
