@@ -105,46 +105,47 @@ class JavaneseCalendar {
     // Method baru: Process multi-day events
     processMultiDayEvents(holidays) {
         const processed = {};
-        
-        Object.entries(holidays).forEach(([dateKey, event]) => {
-            const startDate = this.parseDate(event.startDate);
-            const endDate = this.parseDate(event.endDate);
-            
-            // Jika single day event, langsung masukkan
-            if (event.startDate === event.endDate) {
-                processed[dateKey] = {
-                    ...event,
-                    isMultiDay: false,
-                    isStart: true,
-                    isEnd: true
-                };
-            } else {
-                // Multi-day event: expand ke semua tanggal dalam range
+
+        Object.entries(holidays).forEach(([dateKey, events]) => {
+            const eventArray = Array.isArray(events) ? events : [events];
+
+            eventArray.forEach(event => {
+                const startDate = this.parseDate(event.startDate);
+                const endDate = this.parseDate(event.endDate);
+
+                // expand multi-day events
                 let currentDate = new Date(startDate);
-                const end = new Date(endDate);
-                
-                while (currentDate <= end) {
+                while (currentDate <= endDate) {
                     const key = `${currentDate.getFullYear()}-${currentDate.getMonth() + 1}-${currentDate.getDate()}`;
-                    
-                    processed[key] = {
+                    if (!processed[key]) processed[key] = [];
+                    processed[key].push({
                         ...event,
-                        isMultiDay: true,
+                        isMultiDay: startDate.getTime() !== endDate.getTime(),
                         isStart: currentDate.getTime() === startDate.getTime(),
-                        isEnd: currentDate.getTime() === end.getTime(),
-                        originalKey: dateKey
-                    };
-                    
+                        isEnd: currentDate.getTime() === endDate.getTime()
+                    });
                     currentDate.setDate(currentDate.getDate() + 1);
                 }
-            }
+            });
         });
-        
+
         return processed;
     }
 
     // Helper method: parse date string
     parseDate(dateStr) {
-        const [year, month, day] = dateStr.split('-').map(Number);
+        if (!dateStr || typeof dateStr !== 'string') {
+            console.warn("parseDate got invalid value:", dateStr);
+            return new Date(); // fallback ke hari ini
+        }
+
+        const parts = dateStr.split('-').map(Number);
+        if (parts.length !== 3 || parts.some(isNaN)) {
+            console.warn("parseDate got non-standard format:", dateStr);
+            return new Date();
+        }
+
+        const [year, month, day] = parts;
         return new Date(year, month - 1, day);
     }
 
@@ -574,19 +575,33 @@ class JavaneseCalendar {
             // Holiday indicator - GUNAKAN PROCESSED HOLIDAYS
             const dateStr = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
             if (this.processedHolidays[dateStr]) {
-                const event = this.processedHolidays[dateStr];
-                const indicator = document.createElement('div');
-                
-                // Tambahkan class untuk multi-day events
-                let indicatorClass = `indicator ${event.type}`;
-                if (event.isMultiDay) {
-                    if (event.isStart) indicatorClass += ' event-start';
-                    if (event.isEnd) indicatorClass += ' event-end';
-                    if (!event.isStart && !event.isEnd) indicatorClass += ' event-middle';
-                }
-                
-                indicator.className = indicatorClass;
-                dayCell.appendChild(indicator);
+                const events = this.processedHolidays[dateStr];
+
+                // buat container khusus untuk indikator
+                const indicatorsContainer = document.createElement('div');
+                indicatorsContainer.className = 'indicators';
+
+                const order = ['red', 'green', 'blue', 'yellow'];
+                let shown = 0;
+
+                order.forEach(color => {
+                    if (shown >= 4) return;
+                    const event = events.find(e => e.type === color);
+                    if (event) {
+                        const indicator = document.createElement('span');
+                        let indicatorClass = `indicator ${event.type}`;
+                        if (event.isMultiDay) {
+                            if (event.isStart) indicatorClass += ' event-start';
+                            if (event.isEnd) indicatorClass += ' event-end';
+                            if (!event.isStart && !event.isEnd) indicatorClass += ' event-middle';
+                        }
+                        indicator.className = indicatorClass;
+                        indicatorsContainer.appendChild(indicator);
+                        shown++;
+                    }
+                });
+
+                dayCell.appendChild(indicatorsContainer);
             }
         }
         
@@ -623,54 +638,46 @@ class JavaneseCalendar {
         const eventsList = document.getElementById('eventsList');
         eventsList.innerHTML = '';
         
-        // Get unique events untuk bulan ini - TERMASUK EVENT LINTAS BULAN
         const uniqueEvents = new Map();
-        
-        Object.entries(this.processedHolidays).forEach(([dateKey, event]) => {
-            const [year, month] = dateKey.split('-').map(Number);
-            const eventKey = event.originalKey || dateKey;
-            
-            // Cek apakah event ada di bulan ini (bisa sebagai continuation dari bulan sebelumnya)
-            const startDate = this.parseDate(event.startDate);
-            const endDate = this.parseDate(event.endDate);
-            const currentMonthStart = new Date(this.currentYear, this.currentMonth, 1);
-            const currentMonthEnd = new Date(this.currentYear, this.currentMonth + 1, 0);
-            
-            // Event masuk ke bulan ini jika:
-            // 1. Event dimulai di bulan ini, ATAU
-            // 2. Event berakhir di bulan ini, ATAU  
-            // 3. Event mencakup seluruh bulan ini (dimulai sebelum dan berakhir setelah)
-            const eventInThisMonth = (
-                (startDate >= currentMonthStart && startDate <= currentMonthEnd) || // dimulai di bulan ini
-                (endDate >= currentMonthStart && endDate <= currentMonthEnd) ||     // berakhir di bulan ini
-                (startDate < currentMonthStart && endDate > currentMonthEnd)        // mencakup bulan ini
-            );
-            
-            if (eventInThisMonth && !uniqueEvents.has(eventKey)) {
-                // Tentukan tanggal display untuk event list
-                let displayDate = dateKey;
-                
-                // Jika event dimulai sebelum bulan ini, gunakan tanggal 1 bulan ini sebagai display
-                if (startDate < currentMonthStart) {
-                    displayDate = `${this.currentYear}-${this.currentMonth + 1}-1`;
+        const currentMonthStart = new Date(this.currentYear, this.currentMonth, 1);
+        const currentMonthEnd = new Date(this.currentYear, this.currentMonth + 1, 0);
+
+        Object.entries(this.processedHolidays).forEach(([dateKey, events]) => {
+            events.forEach(event => {
+                // identitas unik = title+range
+                const eventKey = `${event.title}-${event.startDate}-${event.endDate}`;
+                const startDate = this.parseDate(event.startDate);
+                const endDate = this.parseDate(event.endDate);
+
+                const eventInThisMonth = (
+                    (startDate >= currentMonthStart && startDate <= currentMonthEnd) ||
+                    (endDate >= currentMonthStart && endDate <= currentMonthEnd) ||
+                    (startDate < currentMonthStart && endDate > currentMonthEnd)
+                );
+
+                if (eventInThisMonth && !uniqueEvents.has(eventKey)) {
+                    let displayDate = dateKey;
+                    if (startDate < currentMonthStart) {
+                        displayDate = `${this.currentYear}-${this.currentMonth + 1}-1`;
+                    }
+
+                    uniqueEvents.set(eventKey, {
+                        ...event,
+                        displayDate: displayDate,
+                        isPartialMonth: startDate < currentMonthStart || endDate > currentMonthEnd
+                    });
                 }
-                
-                uniqueEvents.set(eventKey, {
-                    ...event,
-                    displayDate: displayDate,
-                    isPartialMonth: startDate < currentMonthStart || endDate > currentMonthEnd
-                });
-            }
+            });
         });
-        
-        // Sort by display date
+
+        // sort by displayDate
         const sortedEvents = Array.from(uniqueEvents.entries())
-            .sort(([keyA, eventA], [keyB, eventB]) => {
-                const dayA = parseInt(eventA.displayDate.split('-')[2]);
-                const dayB = parseInt(eventB.displayDate.split('-')[2]);
+            .sort(([kA, eA], [kB, eB]) => {
+                const dayA = parseInt(eA.displayDate.split('-')[2]);
+                const dayB = parseInt(eB.displayDate.split('-')[2]);
                 return dayA - dayB;
             });
-        
+
         if (sortedEvents.length === 0) {
             eventsList.innerHTML = `
                 <div class="event-item">
@@ -680,16 +687,13 @@ class JavaneseCalendar {
                 </div>`;
             return;
         }
-        
+
         sortedEvents.forEach(([eventKey, event]) => {
             const [year, month, day] = event.displayDate.split('-').map(Number);
             const date = new Date(year, month - 1, day);
-            
-            // Get Hijri data dari cache untuk tanggal display
+
             const hijriData = this.getHijriForDate(year, month, day);
             const javaneseDay = this.getJavaneseDay(date);
-            
-            // Nama hari (Senin, Selasa, dst.)
             const indoDay = date.toLocaleDateString('id-ID', { weekday: 'long' });
             
             let hijriText = '';
@@ -698,31 +702,23 @@ class JavaneseCalendar {
             } else {
                 hijriText = 'Data Hijriah tidak tersedia';
             }
-            
-            // Format date range
+
             const dateRange = this.formatDateRange(event.startDate, event.endDate);
-            
-            // Tambah info jika event lintas bulan
+
             let crossMonthInfo = '';
             if (event.isPartialMonth) {
-                const startDate = this.parseDate(event.startDate);
-                const endDate = this.parseDate(event.endDate);
-                const currentMonthStart = new Date(this.currentYear, this.currentMonth, 1);
-                const currentMonthEnd = new Date(this.currentYear, this.currentMonth + 1, 0);
-                
-                if (startDate < currentMonthStart) {
+                if (this.parseDate(event.startDate) < currentMonthStart) {
                     crossMonthInfo = ' (lanjutan)';
-                } else if (endDate > currentMonthEnd) {
+                } else if (this.parseDate(event.endDate) > currentMonthEnd) {
                     crossMonthInfo = ' (berlanjut)';
                 }
             }
-            
+
             const eventItem = document.createElement('div');
-            eventItem.className = 'event-item clickable'; // Tambah class clickable
-            
-            // Tambah suffix untuk multi-day events dan cross-month info
+            eventItem.className = 'event-item clickable';
+
             const durationText = event.isMultiDay ? ` (Multi-hari)${crossMonthInfo}` : '';
-            
+
             eventItem.innerHTML = `
                 <div class="event-item">
                     <div class="event-date ${event.type}" aria-hidden="true">
@@ -736,27 +732,20 @@ class JavaneseCalendar {
                 </div>
             `;
 
-            // Tambah event listener untuk klik
-            eventItem.addEventListener('click', () => {
-                this.openModal(event);
-            });
-
-            // Tambah keyboard accessibility
+            eventItem.addEventListener('click', () => this.openModal(event));
             eventItem.setAttribute('tabindex', '0');
             eventItem.setAttribute('role', 'button');
             eventItem.setAttribute('aria-label', `Lihat detail ${event.title}`);
-            
             eventItem.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     this.openModal(event);
                 }
             });
-            
+
             eventsList.appendChild(eventItem);
         });
     }
-
 
     updateHeader(date) {
         const hijriData = this.getHijriForDate(date.getFullYear(), date.getMonth() + 1, date.getDate());

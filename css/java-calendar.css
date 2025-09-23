@@ -103,6 +103,13 @@
   padding:6px;
 }
 
+.indicators {
+  display: flex;
+  justify-content: center;  /* posisi di tengah */
+  gap: 3px;                 /* jarak antar titik */
+  margin-top: 2px;
+}
+
 .indicator {
     width: 6px;
     height: 6px;
@@ -110,17 +117,10 @@
     margin-top: 2px;
 }
 
-.indicator.yellow {
-    background: #ffc107;
-}
-
-.indicator.red {
-    background: #dc3545;
-}
-
-.indicator.blue {
-    background: #007bff;
-}
+.indicator.red { background-color: #e74c3c; }
+.indicator.green { background-color: #27ae60; }
+.indicator.blue { background-color: #2980b9; }
+.indicator.yellow { background-color: #f1c40f; }
 
 .day-cell.selected {
     background: rgba(0, 137, 123, 0.15); /* hijau transparan */
