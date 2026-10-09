@@ -59,6 +59,7 @@ function jCalendar(div, config = {}) {
 
 class JavaneseCalendar {
     constructor(config = {}) {
+        this.config = config;
         this.currentDate = new Date();
         this.currentMonth = this.currentDate.getMonth();
         this.currentYear = this.currentDate.getFullYear();
@@ -68,6 +69,11 @@ class JavaneseCalendar {
         
         // Storage untuk menyimpan semua data hijriah per bulan dalam array
         this.monthlyHijriData = new Map();
+
+        // NU Calendar API (https://my.rminujepara.id/kalender/api/nu-calendar.php)
+        this.nuCalendarApiUrl = config.nuCalendarApiUrl || 'https://my.rminujepara.id/kalender/api/nu-calendar.php';
+        this.nuCalendarLoaded = false;
+        this.nuCalendarLoadingPromise = null;
         
         // Hari Jawa cycle
         this.javaDays = ['Legi', 'Pahing', 'Pon', 'Wage', 'Kliwon'];
@@ -79,10 +85,10 @@ class JavaneseCalendar {
             'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
         ];
         
-        // Bulan Hijriah
+        // Bulan Hijriah (sesuai standar penamaan kalender di Indonesia / NU)
         this.hijriMonths = [
-            'Muharram', 'Safar', 'Rabiul Awal', 'Rabiul Akhir', 'Jumadil Awal', 'Jumadil Akhir',
-            'Rajab', 'Sya\'ban', 'Ramadhan', 'Syawal', 'Dzulqaidah', 'Dzulhijjah'
+            'Muharam', 'Safar', 'Rabiul Awal', 'Rabiul Akhir', 'Jumadal Ula', 'Jumadal Akhirah',
+            'Rajab', 'Sya\'ban', 'Ramadhan', 'Syawal', 'Dzulqa\'dah', 'Dzulhijjah'
         ];
         
         // Hari libur nasional 2025
@@ -256,47 +262,101 @@ class JavaneseCalendar {
         });
     }
     
-    // Fetch seluruh data Hijriah untuk 1 bulan sekaligus
+    // Fetch seluruh data kalender Hijriah dari NU Calendar API (https://my.rminujepara.id/kalender/api/nu-calendar.php)
+    async loadNuCalendar() {
+        if (this.nuCalendarLoaded) {
+            return;
+        }
+        if (this.nuCalendarLoadingPromise) {
+            return this.nuCalendarLoadingPromise;
+        }
+
+        this.nuCalendarLoadingPromise = (async () => {
+            try {
+                const response = await fetch(this.nuCalendarApiUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                if (Array.isArray(data) && data.length > 0) {
+                    this.parseNuCalendarData(data);
+                    this.nuCalendarLoaded = true;
+                    console.log(`NU Calendar data loaded: ${data.length} months processed`);
+                } else {
+                    throw new Error('Format data NU Calendar tidak valid');
+                }
+            } catch (error) {
+                console.error('Error fetching NU Calendar:', error);
+            } finally {
+                this.nuCalendarLoadingPromise = null;
+            }
+        })();
+
+        return this.nuCalendarLoadingPromise;
+    }
+
+    // Parsing data NU Calendar ke dalam struktur per-bulan Masehi
+    parseNuCalendarData(nuData) {
+        for (let i = 0; i < nuData.length; i++) {
+            const item = nuData[i];
+            // Format started_at ISO UTC: 17:00 UTC = 00:00 WIB keesokan harinya
+            const startMs = Date.parse(item.started_at) + (7 * 3600 * 1000);
+            const start = new Date(startMs);
+
+            // Hitung durasi hari: jika bulan berikutnya tersedia di data, hitung selisih hari
+            let numDays = item.number_of_days;
+            if (i < nuData.length - 1) {
+                const nextStartMs = Date.parse(nuData[i + 1].started_at) + (7 * 3600 * 1000);
+                numDays = Math.round((nextStartMs - startMs) / 86400000);
+            }
+
+            const monthName = item.month_name || this.hijriMonths[item.month - 1] || '';
+
+            for (let day = 1; day <= numDays; day++) {
+                const curDate = new Date(start.getTime() + (day - 1) * 86400000);
+                const gYear = curDate.getUTCFullYear();
+                const gMonth = curDate.getUTCMonth() + 1;
+                const gDay = curDate.getUTCDate();
+
+                const hijriObj = {
+                    gregorianDay: gDay,
+                    hijriDay: day,
+                    hijriMonth: item.month,
+                    hijriYear: item.year,
+                    hijriMonthName: monthName,
+                    hijriMonthNameAr: '',
+                    hijriWeekday: ''
+                };
+
+                const monthKey = `${gYear}-${gMonth}`;
+                if (!this.monthlyHijriData.has(monthKey)) {
+                    this.monthlyHijriData.set(monthKey, []);
+                }
+                this.monthlyHijriData.get(monthKey).push(hijriObj);
+            }
+        }
+    }
+
+    // Fetch seluruh data Hijriah untuk 1 bulan Masehi
     async fetchHijriMonth(year, month) {
         const monthKey = `${year}-${month}`;
         
-        // Check cache first
+        // Pastikan data NU Calendar telah di-load
+        await this.loadNuCalendar();
+
+        // Cek data dari cache NU Calendar
         if (this.monthlyHijriData.has(monthKey)) {
-            console.log(`Using cached Hijri data for ${monthKey}`);
+            console.log(`Using NU Calendar data for ${monthKey}`);
             return this.monthlyHijriData.get(monthKey);
         }
         
-        try {
-            const response = await fetch(`https://api.aladhan.com/v1/gToHCalendar/${month}/${year}`);
-            const data = await response.json();
-            
-            if (data.code === 200 && data.data && Array.isArray(data.data)) {
-                const hijriArray = data.data.map(dayData => ({
-                    gregorianDay: parseInt(dayData.gregorian.day),
-                    hijriDay: parseInt(dayData.hijri.day),
-                    hijriMonth: parseInt(dayData.hijri.month.number),
-                    hijriYear: parseInt(dayData.hijri.year),
-                    hijriMonthName: dayData.hijri.month.en,
-                    hijriMonthNameAr: dayData.hijri.month.ar,
-                    hijriWeekday: dayData.hijri.weekday.en
-                }));
-                
-                // Cache hasil API
-                this.monthlyHijriData.set(monthKey, hijriArray);
-                console.log(`Cached Hijri data for ${monthKey}:`, hijriArray.length, 'days');
-                
-                return hijriArray;
-            } else {
-                throw new Error('Invalid API response structure');
-            }
-        } catch (error) {
-            console.error('Error fetching Hijri month:', error);
-            // Fallback ke perhitungan manual
-            return this.generateFallbackHijriMonth(year, month);
-        }
+        // Fallback ke perhitungan manual jika di luar jangkauan data NU Calendar
+        console.warn(`Data NU Calendar tidak tersedia untuk ${monthKey}, menggunakan estimasi fallback`);
+        return this.generateFallbackHijriMonth(year, month);
     }
     
-    // Generate fallback data jika API gagal
+    // Generate fallback data jika API gagal atau tanggal di luar jangkauan
     generateFallbackHijriMonth(year, month) {
         const daysInMonth = new Date(year, month, 0).getDate();
         const fallbackData = [];
@@ -310,7 +370,7 @@ class JavaneseCalendar {
                 hijriDay: hijri.day,
                 hijriMonth: hijri.month,
                 hijriYear: hijri.year,
-                hijriMonthName: this.hijriMonths[hijri.month] || this.hijriMonths[hijri.month - 1],
+                hijriMonthName: this.hijriMonths[hijri.month - 1] || hijri.monthName || '',
                 hijriMonthNameAr: hijri.monthNameAr || '',
                 hijriWeekday: 'Unknown'
             });
@@ -404,12 +464,17 @@ class JavaneseCalendar {
             const lastHijri = hijriMonthData[hijriMonthData.length - 1];
             
             // Gunakan nama bulan dari variabel hijriMonths (Indonesia)
-            const firstHijriMonthName = this.hijriMonths[firstHijri.hijriMonth - 1];
-            const lastHijriMonthName = this.hijriMonths[lastHijri.hijriMonth - 1];
+            const firstHijriMonthName = this.hijriMonths[firstHijri.hijriMonth - 1] || firstHijri.hijriMonthName;
+            const lastHijriMonthName = this.hijriMonths[lastHijri.hijriMonth - 1] || lastHijri.hijriMonthName;
             
-            const hijriText = firstHijri.hijriMonth === lastHijri.hijriMonth ? 
-                `${firstHijriMonthName} ${firstHijri.hijriYear} H` :
-                `${firstHijriMonthName} - ${lastHijriMonthName} ${firstHijri.hijriYear} H`;
+            let hijriText = '';
+            if (firstHijri.hijriYear === lastHijri.hijriYear) {
+                hijriText = firstHijri.hijriMonth === lastHijri.hijriMonth ? 
+                    `${firstHijriMonthName} ${firstHijri.hijriYear} H` :
+                    `${firstHijriMonthName} - ${lastHijriMonthName} ${firstHijri.hijriYear} H`;
+            } else {
+                hijriText = `${firstHijriMonthName} ${firstHijri.hijriYear} - ${lastHijriMonthName} ${lastHijri.hijriYear} H`;
+            }
             
             document.getElementById('hijriDate').textContent = hijriText;
             
